@@ -513,28 +513,309 @@ Also see [[AdvancedOptions]]</pre>
 </div>
 <!--POST-SHADOWAREA-->
 <div id="storeArea">
+<div title="DefaultTiddlers" creator="inforabbi" modifier="inforabbi" created="201610290436" changecount="1">
+<pre>[[welcome to my home page]]
+[[GettingStarted]]
+</pre>
+</div>
 <div title="HaemoSideBarOptions" modifier="TiddlyThemes" created="200701130013" modified="200708091512" tags="HaemoglobinTheme">
 <pre>&lt;&lt;closeAll&gt;&gt;&lt;&lt;permaview&gt;&gt;&lt;&lt;newTiddler&gt;&gt;&lt;&lt;newJournal 'DD MMM YYYY'&gt;&gt;&lt;&lt;saveChanges&gt;&gt;&lt;&lt;slider chkSliderOptionsPanel OptionsPanel 'options »' 'Change TiddlyWiki advanced options'&gt;&gt;</pre>
 </div>
-<div title="New Tiddler" creator="GUEST" modifier="GUEST" created="201610251555" modified="201610251637" changecount="5">
-<pre>&lt;html&gt;&lt;iframe height=498 width=510 src='http://player.youku.com/embed/XMTc3MjgyMTc2OA==' frameborder=0 'allowfullscreen'&gt;&lt;/iframe&gt;
+<div title="HoverMenu" creator="inforabbi" modifier="inforabbi" created="201610291659" changecount="1">
+<pre>&lt;&lt;top&gt;&gt;
+&lt;&lt;toggleSideBar&gt;&gt;&lt;&lt;renameButton '&gt;' &gt;&gt;
+&lt;&lt;jump j '' top&gt;&gt;
+&lt;&lt;saveChanges&gt;&gt;&lt;&lt;renameButton s 'Save TiddlyWiki'&gt;&gt;
+&lt;&lt;newTiddler&gt;&gt;&lt;&lt;renameButton n&gt;&gt;
+</pre>
+</div>
+<div title="HoverMenuPlugin" creator="inforabbi" modifier="inforabbi" created="201610291659" tags="systemConfig" changecount="1">
+<pre>/***
+|Name|HoverMenuPlugin|
+|Created by|SaqImtiaz|
+|Location|http://tw.lewcid.org/#HoverMenuPlugin|
+|Version|1.11|
+|Requires|~TW2.x|
+!Description:
+Provides a hovering menu on the edge of the screen for commonly used commands, that scrolls with the page.
 
-http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405
+!Demo:
+Observe the hovering menu on the right edge of the screen.
+
+!Installation:
+Copy the contents of this tiddler to your TW, tag with systemConfig, save and reload your TW.
+To customize your HoverMenu, edit the HoverMenu shadow tiddler.
+
+To customize whether the menu sticks to the right or left edge of the screen, and its start position, edit the HoverMenu configuration settings part of the code below. It's well documented, so don't be scared!
+
+The menu has an id of hoverMenu, in case you want to style the buttons in it using css.
+
+!Notes:
+Since the default HoverMenu contains buttons for toggling the side bar and jumping to the top of the screen and to open tiddlers, the ToggleSideBarMacro, JumpMacro and the JumpToTopMacro are included in this tiddler, so you dont need to install them separately. Having them installed separately as well could lead to complications.
+
+If you dont intend to use these three macros at all, feel free to remove those sections of code in this tiddler.
+
+!To Do:
+* rework code to allow multiple hovering menus in different positions, horizontal etc.
+* incorporate code for keyboard shortcuts that correspond to the buttons in the hovermenu
+
+!History:
+*03-08-06, ver 1.1.2: compatibility fix with SelectThemePlugin
+*03-08-06,  ver 1.11: fixed error with button tooltips
+*27-07-06, ver 1.1 : added JumpMacro to hoverMenu
+*23-07-06
+
+!Code
+***/
+
+/***
+start HoverMenu plugin code
+***/
+//{{{
+config.hoverMenu={};
+//}}}
+
+/***
+HoverMenu configuration settings
+***/
+//{{{
+config.hoverMenu.settings={
+               align: 'right',    //align menu to right or left side of screen, possible values are 'right' and 'left'               
+               x: 1,              // horizontal distance of menu from side of screen, increase to your liking.
+               y: 158            //vertical distance of menu from top of screen at start, increase or decrease to your liking
+               };
+//}}}
+
+//{{{
+//continue HoverMenu plugin code
+config.hoverMenu.handler=function()
+{              
+               if (!document.getElementById(&quot;hoverMenu&quot;))
+               {
+               var theMenu = createTiddlyElement(document.getElementById(&quot;contentWrapper&quot;), &quot;div&quot;,&quot;hoverMenu&quot;);
+               theMenu.setAttribute(&quot;refresh&quot;,&quot;content&quot;);
+               theMenu.setAttribute(&quot;tiddler&quot;,&quot;HoverMenu&quot;);
+               var menuContent = store.getTiddlerText(&quot;HoverMenu&quot;);
+               wikify(menuContent,theMenu);
+              }
+
+	       var Xloc = this.settings.x;
+	       Yloc =this.settings.y;
+	       var ns = (navigator.appName.indexOf(&quot;Netscape&quot;) != -1);
+	       function SetMenu(id)
+                        {
+		        var GetElements=document.getElementById?document.getElementById(id):document.all?document.all[id]:document.layers[id];
+		        if(document.layers)GetElements.style=GetElements;
+		        GetElements.sP=function(x,y){this.style[config.hoverMenu.settings.align]=x +&quot;px&quot;;this.style.top=y +&quot;px&quot;;};
+		        GetElements.x = Xloc;
+		        GetElements.y = findScrollY();
+		        GetElements.y += Yloc;
+		        return GetElements;
+	                }
+               window.LoCate_XY=function()
+                        {
+		        var pY =  findScrollY();
+                        ftlObj.y += (pY + Yloc - ftlObj.y)/15;
+		        ftlObj.sP(ftlObj.x, ftlObj.y);
+		        setTimeout(&quot;LoCate_XY()&quot;, 10);
+	                }
+               ftlObj = SetMenu(&quot;hoverMenu&quot;);
+	       LoCate_XY();
+};
+
+window.old_lewcid_hovermenu_restart = restart;
+restart = function()
+{
+               window.old_lewcid_hovermenu_restart();
+               config.hoverMenu.handler();
+};
+
+setStylesheet(
+&quot;#hoverMenu .imgLink, #hoverMenu .imgLink:hover {border:none; padding:0px; float:right; margin-bottom:2px; margin-top:0px;}\n&quot;+
+&quot;#hoverMenu  .button, #hoverMenu  .tiddlyLink {border:none; font-weight:bold; background:#e0e1fe; color:#FFF; padding:0 5px; float:right; margin-bottom:4px;}\n&quot;+
+&quot;#hoverMenu .button:hover, #hoverMenu .tiddlyLink:hover {font-weight:bold; border:none; color:#fff; background:#000; padding:0 5px; float:right; margin-bottom:4px;}\n&quot;+
+&quot;#hoverMenu .button {width:100%; text-align:center}&quot;+
+&quot;#hoverMenu { position:absolute; width:7px;}\n&quot;+
+&quot;\n&quot;,&quot;hoverMenuStyles&quot;);
 
 
-&lt;object width='541' height='450'&gt;&lt;param name='allowFullScreen' value='true'&gt;&lt;param name='movie' value='http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405'/&gt;&lt;embed src='http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405' width='541' height='450' allowFullScreen='true' type='application/x-shockwave-flash'/&gt;&lt;/object&gt;
+config.macros.renameButton={};
+config.macros.renameButton.handler = function(place,macroName,params,wikifier,paramString,tiddler)
+{
 
+               if (place.lastChild.tagName!=&quot;BR&quot;)
+                     {
+                      place.lastChild.firstChild.data = params[0];
+                      if (params[1]) {place.lastChild.title = params[1];}
+                     }
+};
 
-&lt;video id=&quot;video&quot; controls=&quot;&quot; preload=&quot;none&quot; poster=&quot;http://media.w3.org/2010/05/sintel/poster.png&quot;&gt;
-      &lt;source id=&quot;mp4&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.mp4&quot; type=&quot;video/mp4&quot;&gt;
-      &lt;source id=&quot;webm&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.webm&quot; type=&quot;video/webm&quot;&gt;
-      &lt;source id=&quot;ogv&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.ogv&quot; type=&quot;video/ogg&quot;&gt;
-      &lt;p&gt;Your user agent does not support the HTML5 Video element.&lt;/p&gt;
-    &lt;/video&gt;
+config.shadowTiddlers[&quot;HoverMenu&quot;]=&quot;&lt;&lt;top&gt;&gt;\n&lt;&lt;toggleSideBar&gt;&gt;&lt;&lt;renameButton '&gt;' &gt;&gt;\n&lt;&lt;jump j '' top&gt;&gt;\n&lt;&lt;saveChanges&gt;&gt;&lt;&lt;renameButton s 'Save TiddlyWiki'&gt;&gt;\n&lt;&lt;newTiddler&gt;&gt;&lt;&lt;renameButton n&gt;&gt;\n&quot;;
+//}}}
+//end HoverMenu plugin code
 
+//Start ToggleSideBarMacro code
+//{{{
+config.macros.toggleSideBar={};
 
- Idina Menze和Caleb Hyles激情对唱Let It Go：&lt;iframe height=498 width=510 src=&quot;http://player.youku.com/embed/XMTc3MTc1MzQ1Ng&quot; frameborder=0 allowfullscreen&gt;&lt;/iframe&gt;
-&lt;/html&gt;</pre>
+config.macros.toggleSideBar.settings={
+         styleHide :  &quot;#sidebar { display: none;}\n&quot;+&quot;#contentWrapper #displayArea { margin-right: 1em;}\n&quot;+&quot;&quot;,
+         styleShow : &quot; &quot;,
+         arrow1: &quot;«&quot;,
+         arrow2: &quot;»&quot;
+};
+
+config.macros.toggleSideBar.handler=function (place,macroName,params,wikifier,paramString,tiddler)
+{
+          var tooltip= params[1]||'toggle sidebar';
+          var mode = (params[2] &amp;&amp; params[2]==&quot;hide&quot;)? &quot;hide&quot;:&quot;show&quot;;
+          var arrow = (mode == &quot;hide&quot;)? this.settings.arrow1:this.settings.arrow2;
+          var label= (params[0]&amp;&amp;params[0]!='.')?params[0]+&quot; &quot;+arrow:arrow;
+          var theBtn = createTiddlyButton(place,label,tooltip,this.onToggleSideBar,&quot;button HideSideBarButton&quot;);
+          if (mode == &quot;hide&quot;)
+             { 
+             (document.getElementById(&quot;sidebar&quot;)).setAttribute(&quot;toggle&quot;,&quot;hide&quot;);
+              setStylesheet(this.settings.styleHide,&quot;ToggleSideBarStyles&quot;);
+             }
+};
+
+config.macros.toggleSideBar.onToggleSideBar = function(){
+          var sidebar = document.getElementById(&quot;sidebar&quot;);
+          var settings = config.macros.toggleSideBar.settings;
+          if (sidebar.getAttribute(&quot;toggle&quot;)=='hide')
+             {
+              setStylesheet(settings.styleShow,&quot;ToggleSideBarStyles&quot;);
+              sidebar.setAttribute(&quot;toggle&quot;,&quot;show&quot;);
+              this.firstChild.data= (this.firstChild.data).replace(settings.arrow1,settings.arrow2);
+              }
+          else
+              {    
+               setStylesheet(settings.styleHide,&quot;ToggleSideBarStyles&quot;);
+               sidebar.setAttribute(&quot;toggle&quot;,&quot;hide&quot;);
+               this.firstChild.data= (this.firstChild.data).replace(settings.arrow2,settings.arrow1);
+              }
+
+     return false;
+}
+
+setStylesheet(&quot;.HideSideBarButton .button {font-weight:bold; padding: 0 5px;}\n&quot;,&quot;ToggleSideBarButtonStyles&quot;);
+//}}}
+//end ToggleSideBarMacro code
+
+//start JumpToTopMacro code
+//{{{
+config.macros.top={};
+config.macros.top.handler=function(place,macroName)
+{
+               createTiddlyButton(place,&quot;^&quot;,&quot;jump to top&quot;,this.onclick);
+}
+config.macros.top.onclick=function()
+{
+               window.scrollTo(0,0);
+};
+
+config.commands.top =
+{
+               text:&quot; ^ &quot;,
+               tooltip:&quot;jump to top&quot;
+};
+
+config.commands.top.handler = function(event,src,title)
+{
+               window.scrollTo(0,0);
+}
+//}}}
+//end JumpToStartMacro code
+
+//start JumpMacro code
+//{{{
+config.macros.jump= {};
+config.macros.jump.handler = function (place,macroName,params,wikifier,paramString,tiddler)
+{
+        var label = (params[0] &amp;&amp; params[0]!=&quot;.&quot;)? params[0]: 'jump';
+        var tooltip = (params[1] &amp;&amp; params[1]!=&quot;.&quot;)? params[1]: 'jump to an open tiddler';
+        var top = (params[2] &amp;&amp; params[2]=='top') ? true: false;        
+
+        var btn =createTiddlyButton(place,label,tooltip,this.onclick);
+        if (top==true)
+              btn.setAttribute(&quot;top&quot;,&quot;true&quot;)
+}
+
+config.macros.jump.onclick = function(e)
+{
+        if (!e) var e = window.event;
+        var theTarget = resolveTarget(e);
+        var top = theTarget.getAttribute(&quot;top&quot;);
+	var popup = Popup.create(this);
+	if(popup)
+		{
+                 if(top==&quot;true&quot;)
+                                {createTiddlyButton(createTiddlyElement(popup,&quot;li&quot;),'Top ↑','Top of TW',config.macros.jump.top);
+                                 createTiddlyElement(popup,&quot;hr&quot;);}
+		
+		story.forEachTiddler(function(title,element) {
+			createTiddlyLink(createTiddlyElement(popup,&quot;li&quot;),title,true);
+			});
+                }
+	Popup.show(popup,false);
+	e.cancelBubble = true;
+	if (e.stopPropagation) e.stopPropagation();
+	return false;
+}
+
+config.macros.jump.top = function()
+{
+       window.scrollTo(0,0);
+}
+//}}}
+//end JumpMacro code
+
+//utility functions
+//{{{
+Popup.show = function(unused,slowly)
+{
+	var curr = Popup.stack[Popup.stack.length-1];
+	var rootLeft = findPosX(curr.root);
+	var rootTop = findPosY(curr.root);
+	var rootHeight = curr.root.offsetHeight;
+	var popupLeft = rootLeft;
+	var popupTop = rootTop + rootHeight;
+	var popupWidth = curr.popup.offsetWidth;
+	var winWidth = findWindowWidth();
+        if (isChild(curr.root,'hoverMenu'))
+              var x = config.hoverMenu.settings.x;
+        else
+              var x = 0;
+	if(popupLeft + popupWidth+x &gt; winWidth)
+		popupLeft = winWidth - popupWidth -x;
+        if (isChild(curr.root,'hoverMenu'))
+  	        {curr.popup.style.right = x + &quot;px&quot;;}
+        else
+                curr.popup.style.left = popupLeft + &quot;px&quot;;
+	curr.popup.style.top = popupTop + &quot;px&quot;;
+	curr.popup.style.display = &quot;block&quot;;
+	addClass(curr.root,&quot;highlight&quot;);
+	if(config.options.chkAnimate)
+		anim.startAnimating(new Scroller(curr.popup,slowly));
+	else
+		window.scrollTo(0,ensureVisible(curr.popup));
+}
+
+window.isChild = function(e,parentId) {
+        while (e != null) {
+                var parent = document.getElementById(parentId);
+                if (parent == e) return true;
+                e = e.parentNode;
+                }
+        return false;
+};
+//}}}
+
+</pre>
+</div>
+<div title="MainMenu" creator="inforabbi" modifier="inforabbi" created="201610291543" changecount="1">
+<pre>[[GettingStarted]]
+[[contact me]]</pre>
 </div>
 <div title="PageTemplate" modifier="TiddlyThemes" created="200701130013" modified="200708091512" tags="HaemoglobinTheme">
 <pre>&lt;!--{{{--&gt;
@@ -890,8 +1171,35 @@ h2 {font-size:16px;}
 h3 {font-size: 14px;}
 /*}}}*/</pre>
 </div>
+<div title="contact me" creator="inforabbi" modifier="inforabbi" created="201610291544" modified="201610291547" changecount="3">
+<pre>[[Twitter|https://twitter.com/inforabbi]]
+[[Facebook|https://www.facebook.com/inforabbi]]</pre>
+</div>
 <div title="contentFooter" modifier="GUEST" created="200701130013" modified="201610251541" tags="HaemoglobinTheme" changecount="1">
 <pre>Copyright [[贵州财经大学杨帆|https://inforabbi.github.io/]]</pre>
+</div>
+<div title="welcome to my home page" creator="inforabbi" modifier="inforabbi" created="201610291653" modified="201610291731" changecount="9">
+<pre>[img[http://i67.tinypic.com/rc3al3.jpg]]</pre>
+</div>
+<div title="视频测试" creator="GUEST" modifier="inforabbi" created="201610251555" modified="201610291658" changecount="6">
+<pre>&lt;html&gt;&lt;iframe height=498 width=510 src='http://player.youku.com/embed/XMTc3MjgyMTc2OA==' frameborder=0 'allowfullscreen'&gt;&lt;/iframe&gt;
+
+http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405
+
+
+&lt;object width='541' height='450'&gt;&lt;param name='allowFullScreen' value='true'&gt;&lt;param name='movie' value='http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405'/&gt;&lt;embed src='http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405' width='541' height='450' allowFullScreen='true' type='application/x-shockwave-flash'/&gt;&lt;/object&gt;
+
+
+&lt;video id=&quot;video&quot; controls=&quot;&quot; preload=&quot;none&quot; poster=&quot;http://media.w3.org/2010/05/sintel/poster.png&quot;&gt;
+      &lt;source id=&quot;mp4&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.mp4&quot; type=&quot;video/mp4&quot;&gt;
+      &lt;source id=&quot;webm&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.webm&quot; type=&quot;video/webm&quot;&gt;
+      &lt;source id=&quot;ogv&quot; src=&quot;http://media.w3.org/2010/05/sintel/trailer.ogv&quot; type=&quot;video/ogg&quot;&gt;
+      &lt;p&gt;Your user agent does not support the HTML5 Video element.&lt;/p&gt;
+    &lt;/video&gt;
+
+
+ Idina Menze和Caleb Hyles激情对唱Let It Go：&lt;iframe height=498 width=510 src=&quot;http://player.youku.com/embed/XMTc3MTc1MzQ1Ng&quot; frameborder=0 allowfullscreen&gt;&lt;/iframe&gt;
+&lt;/html&gt;</pre>
 </div>
 </div>
 <!--POST-STOREAREA-->
