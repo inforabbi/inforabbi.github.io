@@ -518,6 +518,127 @@ Also see [[AdvancedOptions]]</pre>
 
 </pre>
 </div>
+<div title="FontSizePluginNew Tiddler" creator="inforabbi" modifier="inforabbi" created="201610310122" tags="systemConfig" changecount="1">
+<pre>/***
+|Name|FontSizePlugin|
+|Created by|SaqImtiaz|
+|Location|http://tw.lewcid.org/#FontSizePlugin|
+|Version|1.0|
+|Requires|~TW2.x|
+!Description:
+Resize tiddler text on the fly. The text size is remembered between sessions by use of a cookie.
+You can customize the maximum and minimum allowed sizes.
+(only affects tiddler content text, not any other text)
+
+Also, you can load a TW file with a font-size specified in the url.
+Eg: http://tw.lewcid.org/#font:110
+
+!Demo:
+Try using the font-size buttons in the sidebar, or in the MainMenu above.
+
+!Installation:
+Copy the contents of this tiddler to your TW, tag with systemConfig, save and reload your TW.
+Then put {{{&lt;&lt;fontSize &quot;font-size:&quot;&gt;&gt;}}} in your SideBarOptions tiddler, or anywhere else that you might like.
+
+!Usage
+{{{&lt;&lt;fontSize&gt;&gt;}}} results in &lt;&lt;fontSize&gt;&gt;
+{{{&lt;&lt;fontSize font-size: &gt;&gt;}}} results in &lt;&lt;fontSize font-size:&gt;&gt;
+
+!Customizing:
+The buttons and prefix text are wrapped in a span with class fontResizer, for easy css styling.
+To change the default font-size, and the maximum and minimum font-size allowed, edit the config.fontSize.settings section of the code below.
+
+!Notes:
+This plugin assumes that the initial font-size is 100% and then increases or decreases the size by 10%. This stepsize of 10% can also be customized.
+
+!History:
+*27-07-06, version 1.0 : prevented double clicks from triggering editing of containing tiddler.
+*25-07-06,  version 0.9
+
+!Code
+***/
+
+//{{{
+config.fontSize={};
+
+//configuration settings
+config.fontSize.settings =
+{
+            defaultSize : 100,  // all sizes in %
+            maxSize : 200,
+            minSize : 40,
+            stepSize : 10
+};
+
+//startup code
+var fontSettings = config.fontSize.settings;
+
+if (!config.options.txtFontSize)
+            {config.options.txtFontSize = fontSettings.defaultSize;
+            saveOptionCookie(&quot;txtFontSize&quot;);}
+setStylesheet(&quot;.tiddler .viewer {font-size:&quot;+config.options.txtFontSize+&quot;%;}\n&quot;,&quot;fontResizerStyles&quot;);
+setStylesheet(&quot;#contentWrapper .fontResizer .button {display:inline;font-size:105%; font-weight:bold; margin:0 1px; padding: 0 3px; text-align:center !important;}\n .fontResizer {margin:0 0.5em;}&quot;,&quot;fontResizerButtonStyles&quot;);
+
+//macro
+config.macros.fontSize={};
+config.macros.fontSize.handler = function (place,macroName,params,wikifier,paramString,tiddler)
+{
+
+               var sp = createTiddlyElement(place,&quot;span&quot;,null,&quot;fontResizer&quot;);
+               sp.ondblclick=this.onDblClick;
+               if (params[0])
+                           createTiddlyText(sp,params[0]);
+               createTiddlyButton(sp,&quot;+&quot;,&quot;increase font-size&quot;,this.incFont);
+               createTiddlyButton(sp,&quot;=&quot;,&quot;reset font-size&quot;,this.resetFont);
+               createTiddlyButton(sp,&quot;–&quot;,&quot;decrease font-size&quot;,this.decFont);
+}
+
+config.macros.fontSize.onDblClick = function (e)
+{
+             if (!e) var e = window.event;
+             e.cancelBubble = true;
+             if (e.stopPropagation) e.stopPropagation();
+             return false;
+}
+
+config.macros.fontSize.setFont = function ()
+{
+               saveOptionCookie(&quot;txtFontSize&quot;);
+               setStylesheet(&quot;.tiddler .viewer {font-size:&quot;+config.options.txtFontSize+&quot;%;}\n&quot;,&quot;fontResizerStyles&quot;);
+}
+
+config.macros.fontSize.incFont=function()
+{
+               if (config.options.txtFontSize &lt; fontSettings.maxSize)
+                  config.options.txtFontSize = (config.options.txtFontSize*1)+fontSettings.stepSize;
+               config.macros.fontSize.setFont();
+}
+
+config.macros.fontSize.decFont=function()
+{
+
+               if (config.options.txtFontSize &gt; fontSettings.minSize)
+                  config.options.txtFontSize = (config.options.txtFontSize*1) - fontSettings.stepSize;
+               config.macros.fontSize.setFont();
+}
+
+config.macros.fontSize.resetFont=function()
+{
+
+               config.options.txtFontSize=fontSettings.defaultSize;
+               config.macros.fontSize.setFont();
+}
+
+config.paramifiers.font =
+{
+               onstart: function(v)
+                  {
+                   config.options.txtFontSize = v;
+                   config.macros.fontSize.setFont();
+                  }
+};
+//}}}</pre>
+</div>
 <div title="HaemoSideBarOptions" modifier="TiddlyThemes" created="200701130013" modified="200708091512" tags="HaemoglobinTheme">
 <pre>&lt;&lt;closeAll&gt;&gt;&lt;&lt;permaview&gt;&gt;&lt;&lt;newTiddler&gt;&gt;&lt;&lt;newJournal 'DD MMM YYYY'&gt;&gt;&lt;&lt;saveChanges&gt;&gt;&lt;&lt;slider chkSliderOptionsPanel OptionsPanel 'options »' 'Change TiddlyWiki advanced options'&gt;&gt;</pre>
 </div>
@@ -813,9 +934,12 @@ window.isChild = function(e,parentId) {
 
 </pre>
 </div>
-<div title="MainMenu" creator="inforabbi" modifier="inforabbi" created="201610291543" changecount="1">
-<pre>[[GettingStarted]]
-[[contact me]]</pre>
+<div title="MainMenu" creator="inforabbi" modifier="inforabbi" created="201610291543" modified="201610310124" changecount="7">
+<pre>&lt;&lt;fontSize&gt;&gt; 
+[[GettingStarted]]
+[[contact me]]
+[[tag cloud|tagCloud]]
+</pre>
 </div>
 <div title="PageTemplate" modifier="TiddlyThemes" created="200701130013" modified="200708091512" tags="HaemoglobinTheme">
 <pre>&lt;!--{{{--&gt;
@@ -1178,6 +1302,49 @@ h3 {font-size: 14px;}
 <div title="contentFooter" modifier="GUEST" created="200701130013" modified="201610251541" tags="HaemoglobinTheme" changecount="1">
 <pre>Copyright [[贵州财经大学杨帆|https://inforabbi.github.io/]]</pre>
 </div>
+<div title="tagCloud" creator="inforabbi" modifier="inforabbi" created="201610310109" changecount="1">
+<pre>&lt;&lt;tagCloud&gt;&gt;
+&lt;&lt;slider chkTestSlider [[OptionsPanel]] &quot;Options&quot; &quot;Open advanced options&quot;&gt;&gt;</pre>
+</div>
+<div title="tagCloud plugin" creator="inforabbi" modifier="inforabbi" created="201610310108" tags="systemConfig" changecount="1">
+<pre>version.extensions.tagCloud = {major: 1, minor: 0 , revision: 1, date: new Date(2005,8,16)};
+//Created by Clint Checketts, contributions by Jonny Leroy and Eric Shulman
+
+config.macros.tagCloud = {
+ noTags: &quot;No tag cloud created because there are no tags.&quot;,
+ tooltip: &quot;%1 tiddlers tagged with '%0'&quot;
+};
+
+config.macros.tagCloud.handler = function(place,macroName,params) {
+ 
+var tagCloudWrapper = createTiddlyElement(place,&quot;div&quot;,null,&quot;tagCloud&quot;,null);
+
+var tags = store.getTags();
+for (t=0; t&lt;tags.length; t++) {
+  for (p=0;p&lt;params.length; p++) if (tags[t][0] == params[p]) tags[t][0] = &quot;&quot;;
+}
+
+ if(tags.length == 0) 
+   createTiddlyElement(tagCloudWrapper,&quot;span&quot;,null,null,this.noTags);
+ //Findout the maximum number of tags
+ var mostTags = 0;
+ for (t=0; t&lt;tags.length; t++) if (tags[t][0].length &gt; 0){
+  if (tags[t][1] &gt; mostTags) mostTags = tags[t][1];
+ }
+ //divide the mostTags into 4 segments for the 4 different tagCloud sizes
+ var tagSegment = mostTags / 4;
+
+  for (t=0; t&lt;tags.length; t++) if (tags[t][0].length &gt; 0){
+ var tagCloudElement = createTiddlyElement(tagCloudWrapper,&quot;span&quot;,null,null,null);
+ tagCloudWrapper.appendChild(document.createTextNode(&quot; &quot;));
+ var theTag = createTiddlyButton(tagCloudElement,tags[t][0],this.tooltip.format(tags[t]),onClickTag,&quot;tagCloudtag tagCloud&quot; + (Math.round(tags[t][1]/tagSegment)+1));
+  theTag.setAttribute(&quot;tag&quot;,tags[t][0]);
+ }
+
+};
+
+setStylesheet(&quot;.tagCloud span{height: 1.8em;margin: 3px;}.tagCloud1{font-size: 1.2em;}.tagCloud2{font-size: 1.4em;}.tagCloud3{font-size: 1.6em;}.tagCloud4{font-size: 1.8em;}.tagCloud5{font-size: 1.8em;font-weight: bold;}&quot;,&quot;tagCloudsStyles&quot;);</pre>
+</div>
 <div title="welcome to my home page" creator="inforabbi" modifier="inforabbi" created="201610291653" modified="201610291731" changecount="9">
 <pre>[img[http://i67.tinypic.com/rc3al3.jpg]]</pre>
 </div>
@@ -1464,12 +1631,13 @@ http://img1.c0.letv.com/ptv/player/swfPlayer.swf?autoPlay=0&amp;id=20556405
  Idina Menze和Caleb Hyles激情对唱Let It Go：&lt;iframe height=498 width=510 src=&quot;http://player.youku.com/embed/XMTc3MTc1MzQ1Ng&quot; frameborder=0 allowfullscreen&gt;&lt;/iframe&gt;
 &lt;/html&gt;</pre>
 </div>
-<div title="论文投稿" creator="inforabbi" modifier="inforabbi" created="201610300401" modified="201610300450" changecount="3">
+<div title="论文投稿" creator="inforabbi" modifier="inforabbi" created="201610300401" modified="201610310857" changecount="6">
 <pre>[[图书馆学、情报学期刊投稿指南]]
+*[[武汉大学信管学院三大期刊|http://dik.whu.edu.cn/CN/volumn/home.shtml]]
 *华东师范大学学报（教育科学版）[[投稿地址|http://xbjk.ecnu.edu.cn/omrs_cn/Default1.asp?role=Author&amp;strord=1]]，用户名inforabbi，密码没有符号
 *科技进步与对策[[投稿地址|http://www.kjjb.org/cn/dqml.asp]]，偶的用户名inforabbi 密码没有符号
 *图书情报知识[[投稿地址|http://www.dik.whu.edu.cn/tougao/]]，我的用户名inforabbi，密码没有符号
-*[[图书情报工作|http://159.226.100.150:8080/journalx_lis/authorLogOn.action?mag_Id=1]]：偶的注册名ginger，密码没有符号[[新地址|http://159.226.100.150:8080/journalx_lis/authorLogOn.action]]，[[主页地址新|http://159.226.100.150:8085/lis/CN/model/index.shtml]]
+*[[图书情报工作|http://124.16.154.130:8080/lis/CN/volumn/volumn_203.shtml]]：偶的注册名ginger，密码没有符号[[新地址|http://159.226.100.150:8080/journalx_lis/authorLogOn.action]]，[[主页地址新|http://159.226.100.150:8085/lis/CN/model/index.shtml]]
 *[[情报杂志在线投稿|http://www.qbzz.org/Login.aspx?Role=author]]，用户名inforabbi，密码有符号
 *[[图书馆杂志|http://www.libnet.sh.cn:8080/dlweb/editorsys/login.jsp]]：注册名ginger，密码没有符号
 *[[大学图书馆学报|http://www.dxts.cb.cnki.net/]]，用户名inforabbi，密码没有符号
