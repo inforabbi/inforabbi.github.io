@@ -47,486 +47,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE." />
 <title>inforabbi'wiki — 网络化的个人知识库</title>
 <!--~~ This is a Tiddlywiki file. The points of interest in the file are marked with this pattern ~~--><!--~~ Raw markup ~~-->
 
-<script>
-var iosDragDropShim = { enableEnterLeave: true, holdToDrag: 300 };
-(function(doc) {
-
-function _exposeIosHtml5DragDropShim(config) {
-  log = noop; // noOp, remove this line to enable debugging
-
-  var coordinateSystemForElementFromPoint;
-
-  var DRAG_OVER_EMIT_FREQ = 50;
-
-  function main() {
-    config = config || {};
-    if (!config.hasOwnProperty("simulateAnchorClick")) config.simulateAnchorClick = true;
-
-    coordinateSystemForElementFromPoint = navigator.userAgent.match(/OS [1-4](?:_\d+)+ like Mac/) ? "page" : "client";
-
-    var div = doc.createElement('div');
-    var dragDiv = 'draggable' in div;
-    var evts = 'ondragstart' in div && 'ondrop' in div;
-
-    var needsPatch = !(dragDiv || evts) || /iPad|iPhone|iPod|Android/.test(navigator.userAgent);
-    log((needsPatch ? "" : "not ") + "patching html5 drag drop");
-
-    if(!needsPatch) {
-      return;
-    }
-
-    if(!config.enableEnterLeave) {
-      DragDrop.prototype.synthesizeEnterLeave = noop;
-    }
-
-    if(config.holdToDrag){
-      doc.addEventListener("touchstart", touchstartDelay(config.holdToDrag), {passive:false});
-    }
-    else {
-      doc.addEventListener("touchstart", touchstart, {passive:false});
-    }
-  }
-
-  function DragDrop(event, el) {
-
-    this.dragData = {};
-    this.dragDataTypes = [];
-    this.dragImage = null;
-    this.dragImageTransform = null;
-    this.dragImageWebKitTransform = null;
-    this.customDragImage = null;
-    this.customDragImageX = null;
-    this.customDragImageY = null;
-    this.el = el || event.target;
-    this.dragOverTimer = null;
-    this.lastMoveEvent = null;
-
-    log("dragstart");
-
-    if (this.dispatchDragStart()) {
-      this.createDragImage();
-      this.listen();
-    }
-  }
-
-  DragDrop.prototype = {
-    listen: function() {
-      var move = onEvt(doc, "touchmove", this.move, this);
-      var end = onEvt(doc, "touchend", ontouchend, this);
-      var cancel = onEvt(doc, "touchcancel", cleanup, this);
-
-      function ontouchend(event) {
-        this.dragend(event, event.target);
-        cleanup.call(this);
-      }
-      function cleanup() {
-        log("cleanup");
-        this.dragDataTypes = [];
-        if (this.dragImage !== null) {
-          this.dragImage.parentNode.removeChild(this.dragImage);
-          this.dragImage = null;
-          this.dragImageTransform = null;
-          this.dragImageWebKitTransform = null;
-        }
-        this.customDragImage = null;
-        this.customDragImageX = null;
-        this.customDragImageY = null;
-        this.el = this.dragData = null;
-        return [move, end, cancel].forEach(function(handler) {
-          return handler.off();
-        });
-      }
-    },
-    move: function(event) {
-      event.preventDefault();
-      var pageXs = [], pageYs = [];
-      [].forEach.call(event.changedTouches, function(touch) {
-        pageXs.push(touch.pageX);
-        pageYs.push(touch.pageY);
-      });
-
-      var x = average(pageXs) - (this.customDragImageX || parseInt(this.dragImage.offsetWidth, 10) / 2);
-      var y = average(pageYs) - (this.customDragImageY || parseInt(this.dragImage.offsetHeight, 10) / 2);
-      this.translateDragImage(x, y);
-
-      this.synthesizeEnterLeave(event);
-      this.synthesizeOver(event);
-    },
-    // We use translate instead of top/left because of sub-pixel rendering and for the hope of better performance
-    // http://www.paulirish.com/2012/why-moving-elements-with-translate-is-better-than-posabs-topleft/
-    translateDragImage: function(x, y) {
-      var translate = "translate(" + x + "px," + y + "px) ";
-
-      if (this.dragImageWebKitTransform !== null) {
-        this.dragImage.style["-webkit-transform"] = translate + this.dragImageWebKitTransform;
-      }
-      if (this.dragImageTransform !== null) {
-        this.dragImage.style.transform = translate + this.dragImageTransform;
-      }
-    },
-    synthesizeEnterLeave: function(event) {
-      var target = elementFromTouchEvent(this.el,event)
-      if (target != this.lastEnter) {
-        if (this.lastEnter) {
-          this.dispatchLeave(event);
-        }
-        this.lastEnter = target;
-        if (this.lastEnter) {
-          this.dispatchEnter(event);
-        }
-      }
-    },
-    synthesizeOver: function(event) {
-      this.lastMoveEvent = event;
-      if(this.lastEnter && !this.dragOverTimer) {
-        this.dragOverTimer = setInterval(this.dispatchOver.bind(this), DRAG_OVER_EMIT_FREQ);
-      }
-    },
-    clearDragOverTimer: function() {
-      if(this.dragOverTimer) {
-        clearInterval(this.dragOverTimer);
-        this.dragOverTimer = null;
-      }
-    },
-    dragend: function(event) {
-
-      // we'll dispatch drop if there's a target, then dragEnd.
-      // drop comes first http://www.whatwg.org/specs/web-apps/current-work/multipage/dnd.html#drag-and-drop-processing-model
-      log("dragend");
-
-      if (this.lastEnter) {
-        this.dispatchLeave(event);
-      }
-
-      var target = elementFromTouchEvent(this.el,event)
-      if (target) {
-        log("found drop target " + target.tagName);
-        this.dispatchDrop(target, event);
-      } else {
-        log("no drop target");
-      }
-
-      var dragendEvt = doc.createEvent("Event");
-      dragendEvt.initEvent("dragend", true, true);
-      this.el.dispatchEvent(dragendEvt);
-      this.clearDragOverTimer();
-    },
-    dispatchDrop: function(target, event) {
-      var dropEvt = doc.createEvent("Event");
-      dropEvt.initEvent("drop", true, true);
-
-      var touch = event.changedTouches[0];
-      var x = touch[coordinateSystemForElementFromPoint + 'X'];
-      var y = touch[coordinateSystemForElementFromPoint + 'Y'];
-
-      var targetOffset = getOffset(target);
-
-      dropEvt.offsetX = x - targetOffset.x;
-      dropEvt.offsetY = y - targetOffset.y;
-
-      dropEvt.dataTransfer = {
-        types: this.dragDataTypes,
-        getData: function(type) {
-          return this.dragData[type];
-        }.bind(this),
-        dropEffect: "move"
-      };
-      dropEvt.preventDefault = function() {
-        // https://www.w3.org/Bugs/Public/show_bug.cgi?id=14638 - if we don't cancel it, we'll snap back
-      }.bind(this);
-
-      once(doc, "drop", function() {
-        log("drop event not canceled");
-      },this);
-
-      target.dispatchEvent(dropEvt);
-    },
-    dispatchEnter: function(event) {
-
-      var enterEvt = doc.createEvent("Event");
-      enterEvt.initEvent("dragenter", true, true);
-      enterEvt.dataTransfer = {
-        types: this.dragDataTypes,
-        getData: function(type) {
-          return this.dragData[type];
-        }.bind(this)
-      };
-
-      var touch = event.changedTouches[0];
-      enterEvt.pageX = touch.pageX;
-      enterEvt.pageY = touch.pageY;
-      enterEvt.clientX = touch.clientX;
-      enterEvt.clientY = touch.clientY;
-
-      this.lastEnter.dispatchEvent(enterEvt);
-    },
-    dispatchOver: function() {
-
-      var overEvt = doc.createEvent("Event");
-      overEvt.initEvent("dragover", true, true);
-      overEvt.dataTransfer = {
-        types: this.dragDataTypes,
-        getData: function(type) {
-          return this.dragData[type];
-        }.bind(this)
-      };
-
-      var touch = this.lastMoveEvent.changedTouches[0];
-      overEvt.pageX = touch.pageX;
-      overEvt.pageY = touch.pageY;
-      overEvt.clientX = touch.clientX;
-      overEvt.clientY = touch.clientY;
-
-      this.lastEnter.dispatchEvent(overEvt);
-    },
-    dispatchLeave: function(event) {
-
-      var leaveEvt = doc.createEvent("Event");
-      leaveEvt.initEvent("dragleave", true, true);
-      leaveEvt.dataTransfer = {
-        types: this.dragDataTypes,
-        getData: function(type) {
-          return this.dragData[type];
-        }.bind(this)
-      };
-
-      var touch = event.changedTouches[0];
-      leaveEvt.pageX = touch.pageX;
-      leaveEvt.pageY = touch.pageY;
-      leaveEvt.clientX = touch.clientX;
-      leaveEvt.clientY = touch.clientY;
-
-      this.lastEnter.dispatchEvent(leaveEvt);
-      this.lastEnter = null;
-      this.clearDragOverTimer();
-    },
-    dispatchDragStart: function() {
-      var evt = doc.createEvent("Event");
-      evt.initEvent("dragstart", true, true);
-      evt.dataTransfer = {
-        setData: function(type, val) {
-          this.dragData[type] = val;
-          if (this.dragDataTypes.indexOf(type) == -1) {
-            this.dragDataTypes[this.dragDataTypes.length] = type;
-          }
-          return val;
-        }.bind(this),
-        setDragImage: function(el, x, y){
-          this.customDragImage = el;
-          this.customDragImageX = x
-          this.customDragImageY = y
-        }.bind(this),
-        dropEffect: "move"
-      };
-      return this.el.dispatchEvent(evt);
-    },
-    createDragImage: function() {
-      if (this.customDragImage) {
-        this.dragImage = this.customDragImage.cloneNode(true);
-        duplicateStyle(this.customDragImage, this.dragImage);
-      } else {
-        this.dragImage = this.el.cloneNode(true);
-        duplicateStyle(this.el, this.dragImage);
-      }
-      this.dragImage.style.opacity = "0.5";
-      this.dragImage.style.position = "absolute";
-      this.dragImage.style.left = "0px";
-      this.dragImage.style.top = "0px";
-      this.dragImage.style.zIndex = "999999";
-
-      var transform = this.dragImage.style.transform;
-      if (typeof transform !== "undefined") {
-        this.dragImageTransform = "";
-        if (transform != "none") {
-          this.dragImageTransform = transform.replace(/translate\(\D*\d+[^,]*,\D*\d+[^,]*\)\s*/g, '');
-        }
-      }
-
-      var webkitTransform = this.dragImage.style["-webkit-transform"];
-      if (typeof webkitTransform !== "undefined") {
-        this.dragImageWebKitTransform = "";
-        if (webkitTransform != "none") {
-          this.dragImageWebKitTransform = webkitTransform.replace(/translate\(\D*\d+[^,]*,\D*\d+[^,]*\)\s*/g, '');
-        }
-      }
-
-      this.translateDragImage(-9999, -9999);
-
-      doc.body.appendChild(this.dragImage);
-    }
-  };
-
-  // delayed touch start event
-  function touchstartDelay(delay) {
-    return function(evt){
-      var el = evt.target;
-
-      do {
-        if (elementIsDraggable(el)) {
-          var heldItem = function() {
-            end.off();
-            cancel.off();
-            scroll.off();
-            touchstart(evt);
-          };
-
-          var onReleasedItem = function() {
-            end.off();
-            cancel.off();
-            scroll.off();
-            clearTimeout(timer);
-          };
-
-          var timer = setTimeout(heldItem, delay);
-
-          var end = onEvt(el, 'touchend', onReleasedItem, this);
-          var cancel = onEvt(el, 'touchcancel', onReleasedItem, this);
-          var scroll = onEvt(window, 'scroll', onReleasedItem, this);
-          break;
-        }
-      } while ((el = el.parentNode) && el !== doc.body);
-    };
-  };
-
-  // event listeners
-  function touchstart(evt) {
-    var el = evt.target;
-    do {
-      if (elementIsDraggable(el)) {
-        handleTouchStartOnAnchor(evt, el);
-
-        evt.preventDefault();
-        new DragDrop(evt,el);
-        break;
-      }
-    } while((el = el.parentNode) && el !== doc.body);
-  }
-
-  function elementIsDraggable(el){
-    // if an element is not draggable either explicitly or implicitly we can exit immediately
-    if(!el.draggable) return false;
-
-    // if an element has been explicitly set to be draggable we're good to go
-    if(el.hasAttribute("draggable")) return true;
-
-    // otherwise we investigate the implicit option
-    return (!config.requireExplicitDraggable);
-  }
-
-  function elementIsAnchor(el){
-    return el.tagName.toLowerCase() == "a";
-  }
-
-  function handleTouchStartOnAnchor(evt, el){
-    // If draggable isn't explicitly set for anchors, then simulate a click event.
-    // Otherwise plain old vanilla links will stop working.
-    // https://developer.mozilla.org/en-US/docs/Web/Guide/Events/Touch_events#Handling_clicks
-    if (!el.hasAttribute("draggable") && elementIsAnchor(el) && config.simulateAnchorClick) {
-      var clickEvt = document.createEvent("MouseEvents");
-      clickEvt.initMouseEvent("click", true, true, el.ownerDocument.defaultView, 1,
-        evt.screenX, evt.screenY, evt.clientX, evt.clientY,
-        evt.ctrlKey, evt.altKey, evt.shiftKey, evt.metaKey, 0, null);
-      el.dispatchEvent(clickEvt);
-      log("Simulating click to anchor");
-    }
-  }
-
-  // DOM helpers
-  function elementFromTouchEvent(el,event) {
-    var touch = event.changedTouches[0];
-    var target = doc.elementFromPoint(
-      touch[coordinateSystemForElementFromPoint + "X"],
-      touch[coordinateSystemForElementFromPoint + "Y"]
-    );
-    return target;
-  }
-
-  //calculate the offset position of an element (relative to the window, not the document)
-  function getOffset(el) {
-    var rect = el.getBoundingClientRect();
-    return {
-      "x": rect.left,
-      "y": rect.top
-    };
-  }
-
-  function onEvt(el, event, handler, context) {
-    if(context) {
-      handler = handler.bind(context);
-    }
-    el.addEventListener(event, handler, {passive:false});
-    return {
-      off: function() {
-        return el.removeEventListener(event, handler, {passive:false});
-      }
-    };
-  }
-
-  function once(el, event, handler, context) {
-    if(context) {
-      handler = handler.bind(context);
-    }
-    function listener(evt) {
-      handler(evt);
-      return el.removeEventListener(event,listener);
-    }
-    return el.addEventListener(event,listener);
-  }
-
-  // duplicateStyle expects dstNode to be a clone of srcNode
-  function duplicateStyle(srcNode, dstNode) {
-    // Is this node an element?
-    if (srcNode.nodeType == 1) {
-      // Remove any potential conflict attributes
-      dstNode.removeAttribute("id");
-      dstNode.removeAttribute("class");
-      dstNode.removeAttribute("style");
-      dstNode.removeAttribute("draggable");
-
-      // Clone the style
-      var cs = window.getComputedStyle(srcNode);
-      for (var i = 0; i < cs.length; i++) {
-        var csName = cs[i];
-        dstNode.style.setProperty(csName, cs.getPropertyValue(csName), cs.getPropertyPriority(csName));
-      }
-
-      // Pointer events as none makes the drag image transparent to document.elementFromPoint()
-      dstNode.style.pointerEvents = "none";
-    }
-
-    // Do the same for the children
-    if (srcNode.hasChildNodes()) {
-      for (var j = 0; j < srcNode.childNodes.length; j++) {
-        duplicateStyle(srcNode.childNodes[j], dstNode.childNodes[j]);
-      }
-    }
-  }
-
-  // general helpers
-  function log(msg) {
-    console.log(msg);
-  }
-
-  function average(arr) {
-    if (arr.length === 0) return 0;
-    return arr.reduce((function(s, v) {
-      return v + s;
-    }), 0) / arr.length;
-  }
-
-  function noop() {}
-
-  main();
-
-};
-
-if (typeof module === 'object' && typeof module.exports === 'object') {
-  module.exports = _exposeIosHtml5DragDropShim;
-} else if (typeof window !== 'undefined') {
-  _exposeIosHtml5DragDropShim(window.iosDragDropShim);
-}
-})(document);
-</script>
 
 </head>
 <body class="tc-body">
@@ -600,25 +120,11 @@ Error message and password prompt
 
 <p>This <a class="tc-tiddlylink-external" href="http://tiddlywiki.com" rel="noopener noreferrer" target="_blank">TiddlyWiki</a> contains the following tiddlers:</p><p><ul>
 
-<li>$:/config/BitmapEditor/Opacity</li>
-
-<li>$:/config/ColourPicker/Recent</li>
-
 <li>$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/full-screen</li>
-
-<li>$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/home</li>
-
-<li>$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/new-image</li>
-
-<li>$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/storyview</li>
-
-<li>$:/config/StackedStoryViewFanHeight</li>
 
 <li>$:/config/Toolbar/ButtonClass</li>
 
 <li>$:/core</li>
-
-<li>$:/Import</li>
 
 <li>$:/isEncrypted</li>
 
@@ -630,79 +136,17 @@ Error message and password prompt
 
 <li>$:/plugins/tiddlywiki/cecily</li>
 
-<li>$:/plugins/tiddlywiki/mobiledragdrop</li>
-
-<li>$:/plugins/tiddlywiki/stacked-view</li>
-
 <li>$:/SiteSubtitle</li>
 
 <li>$:/SiteTitle</li>
 
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/async</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/bibtex</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/blog</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/browser-sniff</li>
-
 <li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/cecily</li>
 
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/classictools</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/codemirror</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/d3</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/evernote</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/filesystem</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/github-fork-ribbon</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/googleanalytics</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/help</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/highlight</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/internals</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/jszip</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/markdown</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/mobiledragdrop</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/nodewebkitsaver</li>
-
 <li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/savetrail</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/stacked-view</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tahoelafs</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/text-slicer</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tiddlyweb</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tw2parser</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tw5.com-docs</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/twitter</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/xlsx-utils</li>
-
-<li>$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/xmldom</li>
 
 <li>$:/state/image-picker/system-2042070162</li>
 
 <li>$:/state/plugin-info--1481615472-$:/plugins/tiddlywiki/cecily--1920057555</li>
-
-<li>$:/state/plugin-info--668780432-$:/plugins/tiddlywiki/mobiledragdrop---947601213</li>
-
-<li>$:/state/showeditpreview</li>
 
 <li>$:/state/sidebar</li>
 
@@ -710,15 +154,11 @@ Error message and password prompt
 
 <li>$:/state/tab--86143343</li>
 
-<li>$:/state/tab--868624678</li>
-
 <li>$:/state/tab-1342078386</li>
 
 <li>$:/state/tab-1749438307</li>
 
 <li>$:/state/tab-2065006209</li>
-
-<li>$:/state/tab/moresidebar-401116514</li>
 
 <li>$:/state/tab/sidebar--1835078512</li>
 
@@ -870,7 +310,7 @@ Error message and password prompt
 
 <li>$:/view</li>
 
-<li>测试照片</li>
+<li>新条目</li>
 
 </ul>
 </p>
@@ -882,26 +322,8 @@ Error message and password prompt
 <!--~~ Ordinary tiddlers ~~-->
 
 <div id="storeArea" style="display:none;">
-<div created="20180523153057241" modified="20180523153057241" title="$:/config/BitmapEditor/Opacity">
-<pre>0.8</pre>
-</div>
-<div created="20180523153100167" list="PowderBlue" modified="20180523153100167" title="$:/config/ColourPicker/Recent">
-<pre></pre>
-</div>
 <div created="20170918163151669" modified="20170918163159218" title="$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/full-screen">
 <pre>hide</pre>
-</div>
-<div created="20180523151037719" modified="20180523151037719" title="$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/home">
-<pre>show</pre>
-</div>
-<div created="20180523151054807" modified="20180523151054807" title="$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/new-image">
-<pre>show</pre>
-</div>
-<div created="20180523153917843" modified="20180523153917843" title="$:/config/PageControlButtons/Visibility/$:/core/ui/Buttons/storyview">
-<pre>show</pre>
-</div>
-<div created="20180523132000746" modified="20180523132002557" title="$:/config/StackedStoryViewFanHeight">
-<pre>250</pre>
 </div>
 <div created="20170918163427366" modified="20170918163435479" title="$:/config/Toolbar/ButtonClass">
 <pre>tc-btn-invisible</pre>
@@ -9103,11 +8525,6 @@ Error message and password prompt
     }
 }</pre>
 </div>
-<div status="complete" title="$:/Import">
-<pre>下列条目已被导入：
-
-# [[Untitled]]</pre>
-</div>
 <div title="$:/isEncrypted">
 <pre>no</pre>
 </div>
@@ -12522,165 +11939,17 @@ Error message and password prompt
     }
 }</pre>
 </div>
-<div author="Tim Ruffles, adapted by Jeremy Ruston " core-version="&gt;=5.0.0" dependents="" description="Mobile drag and drop shim" list="readme license" plugin-type="plugin" title="$:/plugins/tiddlywiki/mobiledragdrop" type="application/json" version="5.1.14">
-<pre>{
-    &quot;tiddlers&quot;: {
-        &quot;$:/plugins/tiddlywiki/mobiledragdrop/ios-drag-drop.js&quot;: {
-            &quot;text&quot;: &quot;(function(doc) {\n\nfunction _exposeIosHtml5DragDropShim(config) {\n  log = noop; // noOp, remove this line to enable debugging\n\n  var coordinateSystemForElementFromPoint;\n\n  var DRAG_OVER_EMIT_FREQ = 50;\n\n  function main() {\n    config = config || {};\n    if (!config.hasOwnProperty(\&quot;simulateAnchorClick\&quot;)) config.simulateAnchorClick = true;\n\n    coordinateSystemForElementFromPoint = navigator.userAgent.match(/OS [1-4](?:_\\d+)+ like Mac/) ? \&quot;page\&quot; : \&quot;client\&quot;;\n\n    var div = doc.createElement('div');\n    var dragDiv = 'draggable' in div;\n    var evts = 'ondragstart' in div &amp;&amp; 'ondrop' in div;\n\n    var needsPatch = !(dragDiv || evts) || /iPad|iPhone|iPod|Android/.test(navigator.userAgent);\n    log((needsPatch ? \&quot;\&quot; : \&quot;not \&quot;) + \&quot;patching html5 drag drop\&quot;);\n\n    if(!needsPatch) {\n      return;\n    }\n\n    if(!config.enableEnterLeave) {\n      DragDrop.prototype.synthesizeEnterLeave = noop;\n    }\n\n    if(config.holdToDrag){\n      doc.addEventListener(\&quot;touchstart\&quot;, touchstartDelay(config.holdToDrag), {passive:false});\n    }\n    else {\n      doc.addEventListener(\&quot;touchstart\&quot;, touchstart, {passive:false});\n    }\n  }\n\n  function DragDrop(event, el) {\n\n    this.dragData = {};\n    this.dragDataTypes = [];\n    this.dragImage = null;\n    this.dragImageTransform = null;\n    this.dragImageWebKitTransform = null;\n    this.customDragImage = null;\n    this.customDragImageX = null;\n    this.customDragImageY = null;\n    this.el = el || event.target;\n    this.dragOverTimer = null;\n    this.lastMoveEvent = null;\n\n    log(\&quot;dragstart\&quot;);\n\n    if (this.dispatchDragStart()) {\n      this.createDragImage();\n      this.listen();\n    }\n  }\n\n  DragDrop.prototype = {\n    listen: function() {\n      var move = onEvt(doc, \&quot;touchmove\&quot;, this.move, this);\n      var end = onEvt(doc, \&quot;touchend\&quot;, ontouchend, this);\n      var cancel = onEvt(doc, \&quot;touchcancel\&quot;, cleanup, this);\n\n      function ontouchend(event) {\n        this.dragend(event, event.target);\n        cleanup.call(this);\n      }\n      function cleanup() {\n        log(\&quot;cleanup\&quot;);\n        this.dragDataTypes = [];\n        if (this.dragImage !== null) {\n          this.dragImage.parentNode.removeChild(this.dragImage);\n          this.dragImage = null;\n          this.dragImageTransform = null;\n          this.dragImageWebKitTransform = null;\n        }\n        this.customDragImage = null;\n        this.customDragImageX = null;\n        this.customDragImageY = null;\n        this.el = this.dragData = null;\n        return [move, end, cancel].forEach(function(handler) {\n          return handler.off();\n        });\n      }\n    },\n    move: function(event) {\n      event.preventDefault();\n      var pageXs = [], pageYs = [];\n      [].forEach.call(event.changedTouches, function(touch) {\n        pageXs.push(touch.pageX);\n        pageYs.push(touch.pageY);\n      });\n\n      var x = average(pageXs) - (this.customDragImageX || parseInt(this.dragImage.offsetWidth, 10) / 2);\n      var y = average(pageYs) - (this.customDragImageY || parseInt(this.dragImage.offsetHeight, 10) / 2);\n      this.translateDragImage(x, y);\n\n      this.synthesizeEnterLeave(event);\n      this.synthesizeOver(event);\n    },\n    // We use translate instead of top/left because of sub-pixel rendering and for the hope of better performance\n    // http://www.paulirish.com/2012/why-moving-elements-with-translate-is-better-than-posabs-topleft/\n    translateDragImage: function(x, y) {\n      var translate = \&quot;translate(\&quot; + x + \&quot;px,\&quot; + y + \&quot;px) \&quot;;\n\n      if (this.dragImageWebKitTransform !== null) {\n        this.dragImage.style[\&quot;-webkit-transform\&quot;] = translate + this.dragImageWebKitTransform;\n      }\n      if (this.dragImageTransform !== null) {\n        this.dragImage.style.transform = translate + this.dragImageTransform;\n      }\n    },\n    synthesizeEnterLeave: function(event) {\n      var target = elementFromTouchEvent(this.el,event)\n      if (target != this.lastEnter) {\n        if (this.lastEnter) {\n          this.dispatchLeave(event);\n        }\n        this.lastEnter = target;\n        if (this.lastEnter) {\n          this.dispatchEnter(event);\n        }\n      }\n    },\n    synthesizeOver: function(event) {\n      this.lastMoveEvent = event;\n      if(this.lastEnter &amp;&amp; !this.dragOverTimer) {\n        this.dragOverTimer = setInterval(this.dispatchOver.bind(this), DRAG_OVER_EMIT_FREQ);\n      }\n    },\n    clearDragOverTimer: function() {\n      if(this.dragOverTimer) {\n        clearInterval(this.dragOverTimer);\n        this.dragOverTimer = null;\n      }\n    },\n    dragend: function(event) {\n\n      // we'll dispatch drop if there's a target, then dragEnd.\n      // drop comes first http://www.whatwg.org/specs/web-apps/current-work/multipage/dnd.html#drag-and-drop-processing-model\n      log(\&quot;dragend\&quot;);\n\n      if (this.lastEnter) {\n        this.dispatchLeave(event);\n      }\n\n      var target = elementFromTouchEvent(this.el,event)\n      if (target) {\n        log(\&quot;found drop target \&quot; + target.tagName);\n        this.dispatchDrop(target, event);\n      } else {\n        log(\&quot;no drop target\&quot;);\n      }\n\n      var dragendEvt = doc.createEvent(\&quot;Event\&quot;);\n      dragendEvt.initEvent(\&quot;dragend\&quot;, true, true);\n      this.el.dispatchEvent(dragendEvt);\n      this.clearDragOverTimer();\n    },\n    dispatchDrop: function(target, event) {\n      var dropEvt = doc.createEvent(\&quot;Event\&quot;);\n      dropEvt.initEvent(\&quot;drop\&quot;, true, true);\n\n      var touch = event.changedTouches[0];\n      var x = touch[coordinateSystemForElementFromPoint + 'X'];\n      var y = touch[coordinateSystemForElementFromPoint + 'Y'];\n\n      var targetOffset = getOffset(target);\n\n      dropEvt.offsetX = x - targetOffset.x;\n      dropEvt.offsetY = y - targetOffset.y;\n\n      dropEvt.dataTransfer = {\n        types: this.dragDataTypes,\n        getData: function(type) {\n          return this.dragData[type];\n        }.bind(this),\n        dropEffect: \&quot;move\&quot;\n      };\n      dropEvt.preventDefault = function() {\n        // https://www.w3.org/Bugs/Public/show_bug.cgi?id=14638 - if we don't cancel it, we'll snap back\n      }.bind(this);\n\n      once(doc, \&quot;drop\&quot;, function() {\n        log(\&quot;drop event not canceled\&quot;);\n      },this);\n\n      target.dispatchEvent(dropEvt);\n    },\n    dispatchEnter: function(event) {\n\n      var enterEvt = doc.createEvent(\&quot;Event\&quot;);\n      enterEvt.initEvent(\&quot;dragenter\&quot;, true, true);\n      enterEvt.dataTransfer = {\n        types: this.dragDataTypes,\n        getData: function(type) {\n          return this.dragData[type];\n        }.bind(this)\n      };\n\n      var touch = event.changedTouches[0];\n      enterEvt.pageX = touch.pageX;\n      enterEvt.pageY = touch.pageY;\n      enterEvt.clientX = touch.clientX;\n      enterEvt.clientY = touch.clientY;\n\n      this.lastEnter.dispatchEvent(enterEvt);\n    },\n    dispatchOver: function() {\n\n      var overEvt = doc.createEvent(\&quot;Event\&quot;);\n      overEvt.initEvent(\&quot;dragover\&quot;, true, true);\n      overEvt.dataTransfer = {\n        types: this.dragDataTypes,\n        getData: function(type) {\n          return this.dragData[type];\n        }.bind(this)\n      };\n\n      var touch = this.lastMoveEvent.changedTouches[0];\n      overEvt.pageX = touch.pageX;\n      overEvt.pageY = touch.pageY;\n      overEvt.clientX = touch.clientX;\n      overEvt.clientY = touch.clientY;\n\n      this.lastEnter.dispatchEvent(overEvt);\n    },\n    dispatchLeave: function(event) {\n\n      var leaveEvt = doc.createEvent(\&quot;Event\&quot;);\n      leaveEvt.initEvent(\&quot;dragleave\&quot;, true, true);\n      leaveEvt.dataTransfer = {\n        types: this.dragDataTypes,\n        getData: function(type) {\n          return this.dragData[type];\n        }.bind(this)\n      };\n\n      var touch = event.changedTouches[0];\n      leaveEvt.pageX = touch.pageX;\n      leaveEvt.pageY = touch.pageY;\n      leaveEvt.clientX = touch.clientX;\n      leaveEvt.clientY = touch.clientY;\n\n      this.lastEnter.dispatchEvent(leaveEvt);\n      this.lastEnter = null;\n      this.clearDragOverTimer();\n    },\n    dispatchDragStart: function() {\n      var evt = doc.createEvent(\&quot;Event\&quot;);\n      evt.initEvent(\&quot;dragstart\&quot;, true, true);\n      evt.dataTransfer = {\n        setData: function(type, val) {\n          this.dragData[type] = val;\n          if (this.dragDataTypes.indexOf(type) == -1) {\n            this.dragDataTypes[this.dragDataTypes.length] = type;\n          }\n          return val;\n        }.bind(this),\n        setDragImage: function(el, x, y){\n          this.customDragImage = el;\n          this.customDragImageX = x\n          this.customDragImageY = y\n        }.bind(this),\n        dropEffect: \&quot;move\&quot;\n      };\n      return this.el.dispatchEvent(evt);\n    },\n    createDragImage: function() {\n      if (this.customDragImage) {\n        this.dragImage = this.customDragImage.cloneNode(true);\n        duplicateStyle(this.customDragImage, this.dragImage);\n      } else {\n        this.dragImage = this.el.cloneNode(true);\n        duplicateStyle(this.el, this.dragImage);\n      }\n      this.dragImage.style.opacity = \&quot;0.5\&quot;;\n      this.dragImage.style.position = \&quot;absolute\&quot;;\n      this.dragImage.style.left = \&quot;0px\&quot;;\n      this.dragImage.style.top = \&quot;0px\&quot;;\n      this.dragImage.style.zIndex = \&quot;999999\&quot;;\n\n      var transform = this.dragImage.style.transform;\n      if (typeof transform !== \&quot;undefined\&quot;) {\n        this.dragImageTransform = \&quot;\&quot;;\n        if (transform != \&quot;none\&quot;) {\n          this.dragImageTransform = transform.replace(/translate\\(\\D*\\d+[^,]*,\\D*\\d+[^,]*\\)\\s*/g, '');\n        }\n      }\n\n      var webkitTransform = this.dragImage.style[\&quot;-webkit-transform\&quot;];\n      if (typeof webkitTransform !== \&quot;undefined\&quot;) {\n        this.dragImageWebKitTransform = \&quot;\&quot;;\n        if (webkitTransform != \&quot;none\&quot;) {\n          this.dragImageWebKitTransform = webkitTransform.replace(/translate\\(\\D*\\d+[^,]*,\\D*\\d+[^,]*\\)\\s*/g, '');\n        }\n      }\n\n      this.translateDragImage(-9999, -9999);\n\n      doc.body.appendChild(this.dragImage);\n    }\n  };\n\n  // delayed touch start event\n  function touchstartDelay(delay) {\n    return function(evt){\n      var el = evt.target;\n\n      do {\n        if (elementIsDraggable(el)) {\n          var heldItem = function() {\n            end.off();\n            cancel.off();\n            scroll.off();\n            touchstart(evt);\n          };\n\n          var onReleasedItem = function() {\n            end.off();\n            cancel.off();\n            scroll.off();\n            clearTimeout(timer);\n          };\n\n          var timer = setTimeout(heldItem, delay);\n\n          var end = onEvt(el, 'touchend', onReleasedItem, this);\n          var cancel = onEvt(el, 'touchcancel', onReleasedItem, this);\n          var scroll = onEvt(window, 'scroll', onReleasedItem, this);\n          break;\n        }\n      } while ((el = el.parentNode) &amp;&amp; el !== doc.body);\n    };\n  };\n\n  // event listeners\n  function touchstart(evt) {\n    var el = evt.target;\n    do {\n      if (elementIsDraggable(el)) {\n        handleTouchStartOnAnchor(evt, el);\n\n        evt.preventDefault();\n        new DragDrop(evt,el);\n        break;\n      }\n    } while((el = el.parentNode) &amp;&amp; el !== doc.body);\n  }\n\n  function elementIsDraggable(el){\n    // if an element is not draggable either explicitly or implicitly we can exit immediately\n    if(!el.draggable) return false;\n\n    // if an element has been explicitly set to be draggable we're good to go\n    if(el.hasAttribute(\&quot;draggable\&quot;)) return true;\n\n    // otherwise we investigate the implicit option\n    return (!config.requireExplicitDraggable);\n  }\n\n  function elementIsAnchor(el){\n    return el.tagName.toLowerCase() == \&quot;a\&quot;;\n  }\n\n  function handleTouchStartOnAnchor(evt, el){\n    // If draggable isn't explicitly set for anchors, then simulate a click event.\n    // Otherwise plain old vanilla links will stop working.\n    // https://developer.mozilla.org/en-US/docs/Web/Guide/Events/Touch_events#Handling_clicks\n    if (!el.hasAttribute(\&quot;draggable\&quot;) &amp;&amp; elementIsAnchor(el) &amp;&amp; config.simulateAnchorClick) {\n      var clickEvt = document.createEvent(\&quot;MouseEvents\&quot;);\n      clickEvt.initMouseEvent(\&quot;click\&quot;, true, true, el.ownerDocument.defaultView, 1,\n        evt.screenX, evt.screenY, evt.clientX, evt.clientY,\n        evt.ctrlKey, evt.altKey, evt.shiftKey, evt.metaKey, 0, null);\n      el.dispatchEvent(clickEvt);\n      log(\&quot;Simulating click to anchor\&quot;);\n    }\n  }\n\n  // DOM helpers\n  function elementFromTouchEvent(el,event) {\n    var touch = event.changedTouches[0];\n    var target = doc.elementFromPoint(\n      touch[coordinateSystemForElementFromPoint + \&quot;X\&quot;],\n      touch[coordinateSystemForElementFromPoint + \&quot;Y\&quot;]\n    );\n    return target;\n  }\n\n  //calculate the offset position of an element (relative to the window, not the document)\n  function getOffset(el) {\n    var rect = el.getBoundingClientRect();\n    return {\n      \&quot;x\&quot;: rect.left,\n      \&quot;y\&quot;: rect.top\n    };\n  }\n\n  function onEvt(el, event, handler, context) {\n    if(context) {\n      handler = handler.bind(context);\n    }\n    el.addEventListener(event, handler, {passive:false});\n    return {\n      off: function() {\n        return el.removeEventListener(event, handler, {passive:false});\n      }\n    };\n  }\n\n  function once(el, event, handler, context) {\n    if(context) {\n      handler = handler.bind(context);\n    }\n    function listener(evt) {\n      handler(evt);\n      return el.removeEventListener(event,listener);\n    }\n    return el.addEventListener(event,listener);\n  }\n\n  // duplicateStyle expects dstNode to be a clone of srcNode\n  function duplicateStyle(srcNode, dstNode) {\n    // Is this node an element?\n    if (srcNode.nodeType == 1) {\n      // Remove any potential conflict attributes\n      dstNode.removeAttribute(\&quot;id\&quot;);\n      dstNode.removeAttribute(\&quot;class\&quot;);\n      dstNode.removeAttribute(\&quot;style\&quot;);\n      dstNode.removeAttribute(\&quot;draggable\&quot;);\n\n      // Clone the style\n      var cs = window.getComputedStyle(srcNode);\n      for (var i = 0; i &lt; cs.length; i++) {\n        var csName = cs[i];\n        dstNode.style.setProperty(csName, cs.getPropertyValue(csName), cs.getPropertyPriority(csName));\n      }\n\n      // Pointer events as none makes the drag image transparent to document.elementFromPoint()\n      dstNode.style.pointerEvents = \&quot;none\&quot;;\n    }\n\n    // Do the same for the children\n    if (srcNode.hasChildNodes()) {\n      for (var j = 0; j &lt; srcNode.childNodes.length; j++) {\n        duplicateStyle(srcNode.childNodes[j], dstNode.childNodes[j]);\n      }\n    }\n  }\n\n  // general helpers\n  function log(msg) {\n    console.log(msg);\n  }\n\n  function average(arr) {\n    if (arr.length === 0) return 0;\n    return arr.reduce((function(s, v) {\n      return v + s;\n    }), 0) / arr.length;\n  }\n\n  function noop() {}\n\n  main();\n\n};\n\nif (typeof module === 'object' &amp;&amp; typeof module.exports === 'object') {\n  module.exports = _exposeIosHtml5DragDropShim;\n} else if (typeof window !== 'undefined') {\n  _exposeIosHtml5DragDropShim(window.iosDragDropShim);\n}\n})(document);&quot;,
-            &quot;type&quot;: &quot;application/javascript&quot;,
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/mobiledragdrop/ios-drag-drop.js&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/mobiledragdrop/license&quot;: {
-            &quot;text&quot;: &quot;Copyright (c) 2013 Tim Ruffles\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \&quot;Software\&quot;), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \&quot;AS IS\&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n&quot;,
-            &quot;type&quot;: &quot;text/plain&quot;,
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/mobiledragdrop/license&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/mobiledragdrop/rawmarkup&quot;: {
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/mobiledragdrop/rawmarkup&quot;,
-            &quot;tags&quot;: &quot;$:/tags/RawMarkupWikified&quot;,
-            &quot;text&quot;: &quot;`&lt;script&gt;\nvar iosDragDropShim = { enableEnterLeave: true, holdToDrag: 300 };`\n{{$:/plugins/tiddlywiki/mobiledragdrop/ios-drag-drop.js}}\n`&lt;/script&gt;`\n&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/mobiledragdrop/readme&quot;: {
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/mobiledragdrop/readme&quot;,
-            &quot;text&quot;: &quot;This plugin provides a \&quot;shim\&quot; that enables HTML 5 compatible drag and drop operations on mobile browsers, including iOS and Android. The shim was created by Tim Ruffles and is published at https://github.com/timruffles/ios-html5-drag-drop-shim.\n\nAfter installing the plugin it is necessary to save the HTML file a second time before it will be fully enabled.\n&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/mobiledragdrop/startup.js&quot;: {
-            &quot;text&quot;: &quot;/*\\\ntitle: $:/plugins/tiddlywiki/mobiledragdrop/startup.js\ntype: application/javascript\nmodule-type: startup\n\nStartup initialisation\n\n\\*/\n(function(){\n\n/*jslint node: true, browser: true */\n/*global $tw: false */\n\&quot;use strict\&quot;;\n\n// Export name and synchronous status\nexports.name = \&quot;mobiledragdrop\&quot;;\nexports.platforms = [\&quot;browser\&quot;];\nexports.after = [\&quot;startup\&quot;];\nexports.synchronous = true;\n\nexports.startup = function() {\n\twindow.addEventListener(\&quot;touchmove\&quot;, function() {});\n};\n\n})();\n&quot;,
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/mobiledragdrop/startup.js&quot;,
-            &quot;type&quot;: &quot;application/javascript&quot;,
-            &quot;module-type&quot;: &quot;startup&quot;
-        }
-    }
-}</pre>
-</div>
-<div author="JeremyRuston" core-version="&gt;=5.0.0" dependents="" description="Stacked card storyview" list="readme" plugin-type="plugin" title="$:/plugins/tiddlywiki/stacked-view" type="application/json" version="5.1.14">
-<pre>{
-    &quot;tiddlers&quot;: {
-        &quot;$:/plugins/tiddlywiki/stacked-view/StackedControls&quot;: {
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/stacked-view/StackedControls&quot;,
-            &quot;caption&quot;: &quot;Stacked View&quot;,
-            &quot;tags&quot;: &quot;$:/tags/SideBar&quot;,
-            &quot;text&quot;: &quot;Set the [[fan separation|$:/config/StackedStoryViewFanHeight]]:\n\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;-10\&quot;&gt;-10&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;0\&quot;&gt;0&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;10\&quot;&gt;10&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;30\&quot;&gt;30&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;50\&quot;&gt;50&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;100\&quot;&gt;100&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;150\&quot;&gt;150&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;200\&quot;&gt;200&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;250\&quot;&gt;250&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;300\&quot;&gt;300&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;500\&quot;&gt;500&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;700\&quot;&gt;700&lt;/$button&gt;\n* &lt;$button set=\&quot;$:/config/StackedStoryViewFanHeight\&quot; setTo=\&quot;1500\&quot;&gt;1500&lt;/$button&gt;\n&quot;
-        },
-        &quot;$:/config/StackedStoryViewFanHeight&quot;: {
-            &quot;title&quot;: &quot;$:/config/StackedStoryViewFanHeight&quot;,
-            &quot;text&quot;: &quot;100&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/stacked-view/readme&quot;: {
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/stacked-view/readme&quot;,
-            &quot;text&quot;: &quot;This plugin provides a new story visualisation that displays individual tiddlers as a stack of cards. It is currently experimental and incomplete.\n\n[[Source code|https://github.com/Jermolene/TiddlyWiki5/blob/master/plugins/tiddlywiki/stacked-view]]\n&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/stacked-view/config-macros/stacked-storyview&quot;: {
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/stacked-view/config-macros/stacked-storyview&quot;,
-            &quot;tags&quot;: &quot;$:/tags/Macro&quot;,
-            &quot;text&quot;: &quot;\\define tv-stacked-storyview-fan-height-config-title() $:/config/StackedStoryViewFanHeight\n&quot;
-        },
-        &quot;$:/plugins/tiddlywiki/stacked-view/stacked.js&quot;: {
-            &quot;text&quot;: &quot;/*\\\ntitle: $:/plugins/tiddlywiki/stacked-view/stacked.js\ntype: application/javascript\nmodule-type: storyview\n\nKeeps tiddlers in a stack\n\n\\*/\n(function(){\n\n/*jslint node: true, browser: true */\n/*global $tw: false */\n\&quot;use strict\&quot;;\n\nvar easing = \&quot;cubic-bezier(0.645, 0.045, 0.355, 1)\&quot;; // From http://easings.net/#easeInOutCubic\n\nvar StackedListView = function(listWidget) {\n\tvar self = this;\n\tthis.listWidget = listWidget;\n\tthis.fanHeightConfigTitle = listWidget.getVariable(\&quot;tv-stacked-storyview-fan-height-config-title\&quot;);\n\tthis.placeTiddlers();\n};\n\nStackedListView.prototype.placeTiddlers = function() {\n\t// Initialise the stack of tiddler titles\n\tthis.listStack = [];\n\tvar numItems = this.listWidget.children.length,\n\t\tt, itemWidget,\n\t\tduration = $tw.utils.getAnimationDuration();\n\tfor(t=numItems-1; t&gt;=0; t--) {\n\t\titemWidget = this.listWidget.children[t];\n\t\tthis.listStack.push(itemWidget.parseTreeNode.itemTitle);\n\t}\n\t// Ensure the tiddler at the top of the history stack is at the top of the array\n\tvar history = this.listWidget.wiki.getTiddlerData(this.listWidget.historyTitle,[]);\n\tfor(t=0; t&lt;history.length; t++) {\n\t\tvar title = history[t].title;\n\t\tif(this.listStack.indexOf(title) !== -1) {\n\t\t\t$tw.utils.pushTop(this.listStack,title);\n\t\t}\n\t}\n\t// Get the configured fan height\n\tvar fanHeight = parseInt(this.listWidget.wiki.getTiddlerText(this.fanHeightConfigTitle),10);\n\t// Position each tiddler\n\tfor(var t=numItems-1; t&gt;=0; t--) {\n\t\t// Get the DOM node for this tiddler\n\t\titemWidget = this.listWidget.children[t];\n\t\tvar domNode = itemWidget.findFirstDomNode();\n\t\tif(domNode instanceof Element) {\n\t\t\t// Allows the width of the tiddler to be adjusted\n\t\t\t$tw.utils.addClass(domNode,\&quot;tc-storyview-zoomin-tiddler\&quot;);\n\t\t\t// Find the position of the tiddler in the stack\n\t\t\tvar pos = this.listStack.indexOf(itemWidget.parseTreeNode.itemTitle);\n\t\t\tif(pos !== -1) {\n\t\t\t\t// Style the tiddler to position it\n\t\t\t\tvar posFactor = pos/(numItems-1);\n\t\t\t\t$tw.utils.setStyle(domNode,[\n\t\t\t\t\t{position: \&quot;absolute\&quot;},\n\t\t\t\t\t{transformOrigin: \&quot;50% 0\&quot;},\n\t\t\t\t\t{transition: $tw.utils.roundTripPropertyName(\&quot;transform\&quot;) + \&quot; \&quot; + duration * (0.5 + posFactor) + \&quot;ms \&quot; + easing},\n\t\t\t\t\t{transform: \&quot;translateX(0px) translateY(\&quot; + (fanHeight * posFactor * posFactor) + \&quot;px) scale(\&quot; + (0.1 + posFactor * 0.9) + \&quot;)\&quot;},\n\t\t\t\t\t{zIndex: pos + \&quot;\&quot;}\n\t\t\t\t]);\n\t\t\t}\n\t\t}\n\t}\n};\n\nStackedListView.prototype.refreshStart = function(changedTiddlers,changedAttributes) {\n};\n\nStackedListView.prototype.refreshEnd = function(changedTiddlers,changedAttributes) {\n\tthis.placeTiddlers();\n};\n\nStackedListView.prototype.navigateTo = function(historyInfo) {\n};\n\nStackedListView.prototype.insert = function(widget) {\n};\n\nStackedListView.prototype.remove = function(widget) {\n\twidget.removeChildDomNodes();\n};\n\nexports.stacked = StackedListView;\n\n})();&quot;,
-            &quot;title&quot;: &quot;$:/plugins/tiddlywiki/stacked-view/stacked.js&quot;,
-            &quot;type&quot;: &quot;application/javascript&quot;,
-            &quot;module-type&quot;: &quot;storyview&quot;
-        },
-        &quot;$:/core/images/storyview-stacked&quot;: {
-            &quot;title&quot;: &quot;$:/core/images/storyview-stacked&quot;,
-            &quot;tags&quot;: &quot;$:/tags/Image&quot;,
-            &quot;text&quot;: &quot;&lt;svg class=\&quot;tc-image-storyview-stack tc-image-button\&quot; width=\&quot;22pt\&quot; height=\&quot;22pt\&quot; viewBox=\&quot;0 0 128 128\&quot;&gt;\n    &lt;g fill-rule=\&quot;evenodd\&quot;&gt;\n        &lt;path d=\&quot;M8.00697327,0 C3.58484404,0 0,3.59075293 0,8.00697327 L0,119.993027 C0,124.415156 3.59075293,128 8.00697327,128 L119.993027,128 C124.415156,128 128,124.409247 128,119.993027 L128,8.00697327 C128,3.58484404 124.409247,0 119.993027,0 L8.00697327,0 L8.00697327,0 Z M32,43 L32,37.3807213 C32,34.4040057 34.3875896,32 37.3328305,32 L45.5,32 L45.5,32 L84,32 L90.6671695,32 C93.6079301,32 96,34.409031 96,37.3807213 L96,43 L32,43 Z M30,48 L23.9992458,48 C19.5813843,48 16,51.578055 16,56.0085154 L16,103.991485 C16,108.414466 19.5881049,112 23.9992458,112 L104.000754,112 C108.418616,112 112,108.421945 112,103.991485 L112,56.0085154 C112,51.5855345 108.411895,48 104.000754,48 L98.5,48 L30,48 Z M80,27 L80,23.7529272 C80,22.2325275 78.803965,21 77.3335847,21 L50.6664153,21 C49.1937948,21 48,22.2299564 48,23.7529272 L48,27 L80,27 Z\&quot;&gt;&lt;/path&gt;\n    &lt;/g&gt;\n&lt;/svg&gt;&quot;
-        }
-    }
-}</pre>
-</div>
 <div created="20170918163525347" modified="20170918163537878" title="$:/SiteSubtitle">
 <pre>网络化的个人知识库</pre>
 </div>
 <div created="20170918163512441" modified="20170918163518504" title="$:/SiteTitle">
 <pre>inforabbi'wiki</pre>
 </div>
-<div created="20180523131632654" modified="20180523131632654" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/async">
-<pre>yes</pre>
-</div>
-<div created="20180523132045498" modified="20180523132045498" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/bibtex">
-<pre>yes</pre>
-</div>
-<div created="20180523131700453" modified="20180523131700453" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/blog">
-<pre>yes</pre>
-</div>
-<div created="20180523132053486" modified="20180523132053486" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/browser-sniff">
-<pre>yes</pre>
-</div>
 <div created="20170918162742492" modified="20170918162742492" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/cecily">
 <pre>yes</pre>
 </div>
-<div created="20180523131811564" modified="20180523131811564" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/classictools">
-<pre>yes</pre>
-</div>
-<div created="20180523132102452" modified="20180523132102452" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/codemirror">
-<pre>yes</pre>
-</div>
-<div created="20180523132128946" modified="20180523132128946" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/d3">
-<pre>yes</pre>
-</div>
-<div created="20180523132154979" modified="20180523132154979" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/evernote">
-<pre>yes</pre>
-</div>
-<div created="20180523132251880" modified="20180523132251880" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/filesystem">
-<pre>yes</pre>
-</div>
-<div created="20180523132112533" modified="20180523132112533" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/github-fork-ribbon">
-<pre>yes</pre>
-</div>
-<div created="20180523132205307" modified="20180523132205307" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/googleanalytics">
-<pre>yes</pre>
-</div>
-<div created="20180523132214170" modified="20180523132214170" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/help">
-<pre>yes</pre>
-</div>
-<div created="20180523132222814" modified="20180523132222814" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/highlight">
-<pre>yes</pre>
-</div>
-<div created="20180523131728285" modified="20180523131728285" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/internals">
-<pre>yes</pre>
-</div>
-<div created="20180523131627569" modified="20180523131627569" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/jszip">
-<pre>yes</pre>
-</div>
-<div created="20180523132301453" modified="20180523132301453" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/markdown">
-<pre>yes</pre>
-</div>
-<div created="20180523132310184" modified="20180523132310184" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/mobiledragdrop">
-<pre>yes</pre>
-</div>
-<div created="20180523132409122" modified="20180523132409122" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/nodewebkitsaver">
-<pre>yes</pre>
-</div>
-<div created="20170918162732286" modified="20180523132028094" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/savetrail">
-<pre>yes</pre>
-</div>
-<div created="20180523131917839" modified="20180523131932159" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/stacked-view">
-<pre>yes</pre>
-</div>
-<div created="20180523131909355" modified="20180523131909355" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tahoelafs">
-<pre>yes</pre>
-</div>
-<div created="20180523131709880" modified="20180523131709880" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/text-slicer">
-<pre>yes</pre>
-</div>
-<div created="20180523131855507" modified="20180523131855507" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tiddlyweb">
-<pre>yes</pre>
-</div>
-<div created="20180523131736475" modified="20180523131736475" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tw2parser">
-<pre>yes</pre>
-</div>
-<div created="20180523132151445" modified="20180523132151445" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/tw5.com-docs">
-<pre>yes</pre>
-</div>
-<div created="20180523131635534" modified="20180523131656594" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/twitter">
+<div created="20170918162732286" modified="20170918162735582" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/savetrail">
 <pre>no</pre>
-</div>
-<div created="20180523131602561" modified="20180523131602561" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/xlsx-utils">
-<pre>yes</pre>
-</div>
-<div created="20180523131614136" modified="20180523131614136" title="$:/state/add-plugin-info/$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html/$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/plugins/tiddlywiki/xmldom">
-<pre>yes</pre>
 </div>
 <div created="20180523080311845" modified="20180523080311845" title="$:/state/image-picker/system-2042070162">
 <pre>show</pre>
@@ -12688,43 +11957,31 @@ Error message and password prompt
 <div created="20170918162633496" modified="20170918162633496" title="$:/state/plugin-info--1481615472-$:/plugins/tiddlywiki/cecily--1920057555">
 <pre>contents</pre>
 </div>
-<div created="20180523132437114" modified="20180523153636878" title="$:/state/plugin-info--668780432-$:/plugins/tiddlywiki/mobiledragdrop---947601213">
-<pre>readme</pre>
-</div>
-<div created="20180523153102101" modified="20180523153107737" title="$:/state/showeditpreview">
-<pre>no</pre>
-</div>
 <div created="20170918163228764" modified="20170918163614935" title="$:/state/sidebar">
 <pre>yes</pre>
 </div>
 <div created="20170918162909309" modified="20170918163343698" title="$:/state/tab--1963855381">
 <pre>$:/core/ui/ControlPanel/Palette</pre>
 </div>
-<div created="20170918162504037" modified="20180523132427167" title="$:/state/tab--86143343">
+<div created="20170918162504037" modified="20170918162626756" title="$:/state/tab--86143343">
 <pre>$:/core/ui/ControlPanel/Plugins/Installed/Plugins</pre>
-</div>
-<div created="20180523155100338" modified="20180523155107978" title="$:/state/tab--868624678">
-<pre>$:/core/ui/MoreSideBar/Plugins/Languages</pre>
 </div>
 <div created="20170918162516829" modified="20170918162727897" title="$:/state/tab-1342078386">
 <pre>$:/core/ui/ControlPanel/Plugins/Add/Plugins</pre>
 </div>
-<div created="20170918162448373" modified="20180523132021175" title="$:/state/tab-1749438307">
-<pre>$:/core/ui/ControlPanel/Plugins</pre>
+<div created="20170918162448373" modified="20170918163632070" title="$:/state/tab-1749438307">
+<pre>$:/core/ui/ControlPanel/Saving</pre>
 </div>
 <div created="20170918163444458" modified="20170918163635286" title="$:/state/tab-2065006209">
 <pre>$:/core/ui/ControlPanel/Saving/General</pre>
 </div>
-<div created="20180523155055006" modified="20180523155601129" title="$:/state/tab/moresidebar-401116514">
-<pre>$:/core/ui/MoreSideBar/Orphans</pre>
-</div>
-<div created="20170918162439731" modified="20180523155052261" title="$:/state/tab/sidebar--1835078512">
-<pre>$:/core/ui/SideBar/More</pre>
+<div created="20170918162439731" modified="20170918163619927" title="$:/state/tab/sidebar--1835078512">
+<pre>$:/core/ui/SideBar/Open</pre>
 </div>
 <div created="20170918162911975" modified="20170918163329579" title="$:/state/tabs/controlpanel/toolbars-1345989671">
 <pre>$:/core/ui/ControlPanel/Toolbars/PageControls</pre>
 </div>
-<div list="$:/themes/tiddlywiki/snowwhite $:/themes/tiddlywiki/vanilla 测试照片 $:/ControlPanel $:/plugins/tiddlywiki/mobiledragdrop" title="$:/StoryList">
+<div list="新条目 GettingStarted" title="$:/StoryList">
 <pre></pre>
 </div>
 <div plugin-type="info" title="$:/temp/info-plugin" type="application/json">
@@ -13208,7 +12465,7 @@ This plugin also requires the JSZip plugin ([[$:/plugins/tiddlywiki/jszip]]) to 
 <div author="JeremyRuston" core-version="&gt;=5.0.0" created="20170918162519797" dependents="" description="Basic theme" modified="20170918162519797" name="Vanilla" original-plugin-type="theme" original-tags="" original-title="$:/themes/tiddlywiki/vanilla" original-type="application/json" server-url="http://tiddlywiki.com/library/v5.1.14/index.html" tags="$:/tags/RemoteAssetInfo" title="$:/temp/RemoteAssetInfo/http://tiddlywiki.com/library/v5.1.14/index.html/$:/themes/tiddlywiki/vanilla" type="text/vnd.tiddlywiki" version="5.1.14">
 <pre></pre>
 </div>
-<div created="20180523132339515" modified="20180523132339515" tags="$:/tags/ServerConnection" title="$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html" url="http://tiddlywiki.com/library/v5.1.14/index.html">
+<div created="20170918162519791" modified="20170918162519791" tags="$:/tags/ServerConnection" title="$:/temp/ServerConnection/http://tiddlywiki.com/library/v5.1.14/index.html" url="http://tiddlywiki.com/library/v5.1.14/index.html">
 <pre>loaded</pre>
 </div>
 <div created="20170918162900614" modified="20170918162939216" title="$:/theme">
@@ -13326,11 +12583,11 @@ This plugin also requires the JSZip plugin ([[$:/plugins/tiddlywiki/jszip]]) to 
 <div created="20170918163249671" modified="20170918163252281" title="$:/themes/tiddlywiki/vanilla/options/sidebarlayout">
 <pre>fixed-fluid</pre>
 </div>
-<div created="20170918163038129" modified="20180523153927114" title="$:/view">
+<div created="20170918163038129" modified="20170918163112198" title="$:/view">
 <pre>zoomin</pre>
 </div>
-<div created="20180523080258091" modified="20180523081253629" tags="" title="测试照片">
-<pre>重庆摊摊面馆[img[http://okxsxbd8f.bkt.clouddn.com/IMG_20171105_134604.jpg]]</pre>
+<div created="20180523080258091" modified="20180523080511198" tags="" title="新条目">
+<pre>http://okxsxbd8f.bkt.clouddn.com/IMG_20171105_134604.jpg[img[http://okxsxbd8f.bkt.clouddn.com/IMG_20171105_134604.jpg]]</pre>
 </div>
 
 </div>
