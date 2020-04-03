@@ -1,0 +1,105 @@
+/* Body */
+
+body {font-family: Arial, Helvetica, sans-serif; font-size:larger; color:#000000; background-color:#333333}
+
+/* Internal Section Headings */
+
+h1 {font-size:1.1em; text-align:left;}
+h2 {font-size:1em; text-align:left;}
+h3 {font-size:.9em; text-transform:uppercase; text-align:left;}
+h4 {font-size:.9em; text-align:left;}
+h5 {font-size:.9em; font-style:italic; text-align:left;}
+
+/* Paragraph */
+
+p {font-size:.9em;}
+
+/* Lists */
+
+li {font-size:.9em; padding-bottom:5px; padding-top:5px;}
+
+
+/* Definition Lists for TOC */
+
+dl  {padding-top:5px; padding-bottom:5px;}
+dt {padding-top:5px; padding-bottom:5px;}
+dd {font-size:.9em; padding-top:5px; padding-bottom:5px;}
+
+
+/* Links */
+
+a {font-size:inherit;}
+a:link {font-size:inherit; color:#000099; text-decoration:none;}
+a:visited {font-size:inherit; color:#800000; text-decoration:none;}
+a:hover {font-size:inherit; color:#000099;  text-decoration:underline;}
+a:active {font-size:inherit; color:#000099; text-decoration:none}
+
+
+/* Page Table */
+
+table {font-family: Arial, Helvetica, sans-serif; border-collapse:collapse; border:1.4px solid #444; margin-right:auto; margin-left:auto; background-color:#FFFFFF;}
+
+/* Page Table Cell: Page Header */
+
+td {font-family: Arial, Helvetica, sans-serif; border-collapse:collapse; border:1.4px solid #444; padding-left:20px; padding-right:20px; padding-bottom:8px; padding-top:8px; vertical-align:top;}
+
+/* Page Table Cell: Content Width*/
+
+.bodywidth {width:80%;}
+
+
+/* Page Table Cell: Page Header Color*/
+
+.header {background-color:#336699;}
+
+
+/* Page Table Cell: Page Headlines */
+
+.headline1 {width:100%; text-align:center; color:#FFFFFF; font-family:Georgia, "Times New Roman", Times, serif; font-size:2.5em; font-weight:bold; line-height:1em; padding-bottom:10px;}
+.headline1S {width:100%; text-align:center; color:#FFFFFF; Arial, Helvetica, sans-serif; font-size:1.9em; line-height:1em; padding-bottom:10px;}
+.headline2 {width:100%; text-align:center; color:#FFFFFF; font-family:Georgia, "Times New Roman", Times, serif; font-size:1.5em; font-weight:bold; line-height:1em; padding-bottom:10px;}
+.headline3 {width:100%; text-align:center; color:#FFFFFF; font-family:Georgia, "Times New Roman", Times, serif; font-size:1em; text-transform:uppercase; font-weight:bold; line-height:1em; padding-bottom:10px;}
+
+/* Menu Headline */
+
+.menuheadline {width:100%; font-family: Arial, Helvetica, sans-serif; font-size:1.05em; line-height:1em; padding-bottom:5px; text-transform:uppercase;}
+
+/* Page Table Cell: Home Page Odd Cell */
+
+.menuodd {background-color:#CDD8E6; font-family: Arial, Helvetica, sans-serif; font-size:1em; text-decoration:none; color:#000000;}
+
+
+/* Page Table Cell: Home Page Even Cell */
+
+.menueven {background-color:#DEE9F7; font-family: Arial, Helvetica, sans-serif; font-size:1em; text-decoration:none; color:#000000;}
+
+
+/* Reviews and Other Notices */
+
+.announce {background-color:#CDD8E6;}
+
+/* Abstract */
+
+.abs {position:relative; left:15px;}
+
+
+/* Page Table Cell: Full-Page Section Menus */
+
+.menu {border-style:none;}
+.menu li {list-style-type:none; padding-bottom:5px; padding-top:5px;  font-size:.9em;}
+
+/* Borders */
+
+.image-noborder {border-width:0;}
+
+.noborder {border-style:none;}
+
+/* Highlight */
+
+.yhl {background: #FFFFFF; color:#000000;}
+
+/* Page Footer Color and Links*/
+
+.footer {background-color:#336699; color:#FFFFFF; font-size:.85em; text-decoration:none;}
+.footer a:link {color: white}
+.footer a:visited {color:#FFBBDD;}
